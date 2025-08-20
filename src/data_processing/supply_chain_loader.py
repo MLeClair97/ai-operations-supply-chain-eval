@@ -31,18 +31,82 @@ def load_supply_chain_data() -> pd.DataFrame:
 
 @st.cache_data
 def calculate_supply_chain_metrics(df):
-    try:  # Add try block
-        metrics = {
+    try:
+        today = pd.Timestamp.now().normalize()  # Today at midnight
+        
+        # Basic counts
+        basic_metrics = {
             'total_suppliers': df['Supplier'].nunique(),
             'total_products': df['Product'].nunique(),
             'total_warehouses': df['Warehouse Location'].nunique(),
             'total_logistics_partners': df['Logistics Partner'].nunique(),
-            'avg_delivery_time': df['Delivery Date'].dt.day.mean(),
-            'on_time_delivery_rate': (df['Delivery Status'] == 'Delivered').mean() * 100,
             'total_cost': df['Total Cost'].sum()
         }
+        
+        # Enhanced delivery analysis
+        if 'Delivery Date' in df.columns and 'Delivery Status' in df.columns:
+            df['Delivery Date'] = pd.to_datetime(df['Delivery Date'])
+            
+            # Classify delivery performance
+            conditions = [
+                # Delivered items (actual performance)
+                (df['Delivery Status'] == 'Delivered'),
+                
+                # In progress but on-track (expected delivery >= today)
+                ((df['Delivery Status'].isin(['In Transit', 'Pending'])) & 
+                 (df['Delivery Date'] >= today)),
+                
+                # Overdue (in progress but past expected delivery date)
+                ((df['Delivery Status'].isin(['In Transit', 'Pending'])) & 
+                 (df['Delivery Date'] < today)),
+                
+                # Explicitly delayed
+                (df['Delivery Status'] == 'Delayed')
+            ]
+            
+            choices = ['Delivered', 'On-Track', 'Overdue', 'Delayed']
+            df['Performance_Category'] = pd.Series(
+                pd.Categorical(
+                    np.select(conditions, choices, default='Unknown'),
+                    categories=['Delivered', 'On-Track', 'Overdue', 'Delayed', 'Unknown']
+                )
+            )
+            
+            # Calculate performance metrics
+            total_orders = len(df)
+            delivered_count = len(df[df['Performance_Category'] == 'Delivered'])
+            on_track_count = len(df[df['Performance_Category'] == 'On-Track'])
+            overdue_count = len(df[df['Performance_Category'] == 'Overdue'])
+            delayed_count = len(df[df['Performance_Category'] == 'Delayed'])
+            
+            # Performance rates
+            delivery_metrics = {
+                'completed_delivery_rate': (delivered_count / total_orders * 100) if total_orders > 0 else 0,
+                'on_track_rate': (on_track_count / total_orders * 100) if total_orders > 0 else 0,
+                'overdue_rate': (overdue_count / total_orders * 100) if total_orders > 0 else 0,
+                'delayed_rate': (delayed_count / total_orders * 100) if total_orders > 0 else 0,
+                
+                # Overall performance score (delivered + on-track)
+                'overall_performance_rate': ((delivered_count + on_track_count) / total_orders * 100) if total_orders > 0 else 0,
+                
+                # Average delivery time for completed orders only
+                'avg_delivery_time': df[df['Performance_Category'] == 'Delivered']['Delivery Date'].dt.day.mean() if delivered_count > 0 else 0
+            }
+        else:
+            delivery_metrics = {
+                'completed_delivery_rate': 0,
+                'on_track_rate': 0,
+                'overdue_rate': 0, 
+                'delayed_rate': 0,
+                'overall_performance_rate': 0,
+                'avg_delivery_time': 0
+            }
+        
+        # Combine all metrics
+        metrics = {**basic_metrics, **delivery_metrics}
         return metrics
-    except Exception as e:  # This needs to be at the same level as 'try'
+    
+    except Exception as e:
         st.error(f"Error calculating metrics: {str(e)}")
         return {}
 
