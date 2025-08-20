@@ -167,7 +167,7 @@ def create_shipping_method_analysis(df):
                 y=shipping_stats['Delay_Rate'],
                 marker_color='#DC143C',
                 text=shipping_stats['Delay_Rate'].astype(str) + '%',
-                textposition='outside'
+                textposition='auto'  # CHANGED: Better text positioning
             ),
             secondary_y=False,
         )
@@ -191,9 +191,11 @@ def create_shipping_method_analysis(df):
         fig.update_yaxes(title_text="Average Cost ($)", secondary_y=True)
         
         fig.update_layout(
-            height=400,
+            height=450,  # INCREASED HEIGHT
             template='plotly_dark',
-            showlegend=True
+            showlegend=True,
+            margin=dict(t=80, b=60, l=60, r=60),  # ADDED MARGINS
+            title_y=0.95
         )
         
         return fig
