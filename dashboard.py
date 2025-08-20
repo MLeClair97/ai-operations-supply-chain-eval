@@ -80,9 +80,9 @@ def main():
 def show_operations_overview(df):
     st.header("📈 Operations Overview")
     
-    # Metrics row (copy pattern from sales app)
     metrics = calculate_supply_chain_metrics(df)
     
+    # First row - basic counts
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total Suppliers", metrics.get('total_suppliers', 0))
@@ -91,11 +91,26 @@ def show_operations_overview(df):
     with col3:
         st.metric("Total Warehouses", metrics.get('total_warehouses', 0))
     with col4:
-        st.metric("Total Cost", f"${metrics.get('total_cost', 0):,.0f}")
+        st.metric("Logistics Partners", metrics.get('total_logistics_partners', 0))
     
-    # Add basic visualizations
-    st.subheader("Supply Chain Overview")
-    # TODO: Add charts similar to your sales app structure
+    # Second row - performance metrics
+    col5, col6, col7, col8 = st.columns(4)
+    with col5:
+        st.metric("Total Cost", f"${metrics.get('total_cost', 0):,.0f}")
+    with col6:
+        delivery_rate = metrics.get('on_time_delivery_rate', 0)
+        st.metric("On-Time Delivery", f"{delivery_rate:.1f}%")
+    with col7:
+        avg_delivery = metrics.get('avg_delivery_time', 0)
+        st.metric("Avg Delivery Time", f"{avg_delivery:.1f} days")
+    with col8:
+        # Add a quick status indicator
+        if delivery_rate > 80:
+            st.metric("Status", "🟢 Good")
+        elif delivery_rate > 60:
+            st.metric("Status", "🟡 Fair") 
+        else:
+            st.metric("Status", "🔴 Poor")
 
 # Placeholder functions for other pages
 def show_supply_chain_risk(df):
