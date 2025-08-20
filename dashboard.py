@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime, date
 import plotly.express as px
 import plotly.graph_objects as go
 from src.data_processing.supply_chain_loader import (
@@ -61,6 +62,7 @@ with st.sidebar:
 # Main content area
 def main():
     df = load_data()
+    debug_data_info(df) 
     
     if df.empty:
         st.error("No data loaded. Please check data file.")
@@ -98,19 +100,48 @@ def show_operations_overview(df):
     with col5:
         st.metric("Total Cost", f"${metrics.get('total_cost', 0):,.0f}")
     with col6:
-        delivery_rate = metrics.get('on_time_delivery_rate', 0)
-        st.metric("On-Time Delivery", f"{delivery_rate:.1f}%")
+        completed_rate = metrics.get('completed_delivery_rate', 0)
+        st.metric("Completed Deliveries", f"{completed_rate:.1f}%")
     with col7:
+        on_track_rate = metrics.get('on_track_rate', 0) 
+        st.metric("On-Track Orders", f"{on_track_rate:.1f}%")
+    with col8:
+        overall_performance = metrics.get('overall_performance_rate', 0)
+        if overall_performance > 80:
+            st.metric("Overall Status", "🟢 Excellent", f"{overall_performance:.1f}%")
+        elif overall_performance > 60:
+            st.metric("Overall Status", "🟡 Good", f"{overall_performance:.1f}%")
+        else:
+            st.metric("Overall Status", "🔴 Needs Attention", f"{overall_performance:.1f}%")
+    
+    # Third row - problem areas
+    col9, col10, col11, col12 = st.columns(4)
+    with col9:
+        overdue_rate = metrics.get('overdue_rate', 0)
+        st.metric("⚠️ Overdue Orders", f"{overdue_rate:.1f}%")
+    with col10:
+        delayed_rate = metrics.get('delayed_rate', 0)
+        st.metric("🔴 Delayed Orders", f"{delayed_rate:.1f}%")
+    with col11:
         avg_delivery = metrics.get('avg_delivery_time', 0)
         st.metric("Avg Delivery Time", f"{avg_delivery:.1f} days")
-    with col8:
-        # Add a quick status indicator
-        if delivery_rate > 80:
-            st.metric("Status", "🟢 Good")
-        elif delivery_rate > 60:
-            st.metric("Status", "🟡 Fair") 
+    with col12:
+        # Risk indicator
+        risk_score = overdue_rate + delayed_rate
+        if risk_score < 10:
+            st.metric("Risk Level", "🟢 Low")
+        elif risk_score < 25:
+            st.metric("Risk Level", "🟡 Medium")
         else:
-            st.metric("Status", "🔴 Poor")
+            st.metric("Risk Level", "🔴 High")
+    st.markdown(
+        """
+        <div style='text-align: center; color: #666; font-size: 0.8em; margin-top: 2rem;'>
+        📊 Data: <a href='https://www.kaggle.com/datasets/discovertalent143/supply-chain-dataset' target='_blank'>Kaggle Supply Chain Dataset</a> (dates updated for demo)
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
 
 # Placeholder functions for other pages
 def show_supply_chain_risk(df):
@@ -128,6 +159,28 @@ def show_cost_optimization(df):
 def show_ai_insights(df):
     st.header("🤖 AI Insights")
     st.info("Coming soon - Natural language business insights")
+
+def debug_data_info(df):
+    st.sidebar.markdown("### 🔍 Debug Info")
+    st.sidebar.write(f"Data loaded at: {datetime.now().strftime('%H:%M:%S')}")
+    st.sidebar.write(f"Total rows: {len(df)}")
+    
+    if 'Delivery Date' in df.columns:
+        st.sidebar.write(f"Date range: {df['Delivery Date'].min()} to {df['Delivery Date'].max()}")
+        st.sidebar.write(f"Today: {pd.Timestamp.now().normalize()}")
+    
+    if 'Delivery Status' in df.columns:
+        status_counts = df['Delivery Status'].value_counts()
+        st.sidebar.write("**Original Status:**")
+        for status, count in status_counts.items():
+            st.sidebar.write(f"  {status}: {count}")
+    
+    # Show performance categories if available
+    if 'Performance_Category' in df.columns:
+        perf_counts = df['Performance_Category'].value_counts()
+        st.sidebar.write("**Performance Categories:**")
+        for category, count in perf_counts.items():
+            st.sidebar.write(f"  {category}: {count}")
 
 
 if __name__ == "__main__":
