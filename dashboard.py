@@ -8,6 +8,17 @@ from src.data_processing.supply_chain_loader import (
     calculate_supply_chain_metrics,
     get_supplier_performance
 )
+from src.ai_insights.operations_analyzer import generate_risk_analysis
+from src.visualizations.supply_chain_viz import (
+    create_logistics_performance_chart,
+    create_risk_heatmap,
+    create_shipping_method_analysis,
+    create_cost_impact_donut,
+    create_delivery_performance_gauge,
+    create_delivery_status_summary,
+    create_logistics_partner_comparison,
+    create_cost_by_warehouse
+)
 
 # Page config
 st.set_page_config(
@@ -50,6 +61,7 @@ with st.sidebar:
     page = st.selectbox("Choose Analysis", [
         "📈 Operations Overview",
         "⚠️ Supply Chain Risk", 
+        "📊 Performance Analytics",  
         "📦 Inventory Management",
         "💰 Cost Optimization",
         "🤖 AI Insights"
@@ -72,6 +84,8 @@ def main():
         show_operations_overview(df)
     elif page == "⚠️ Supply Chain Risk":
         show_supply_chain_risk(df)
+    elif page == "📊 Performance Analytics": 
+        show_performance_analytics(df)        
     elif page == "📦 Inventory Management":
         show_inventory_management(df)
     elif page == "💰 Cost Optimization":
@@ -143,11 +157,128 @@ def show_operations_overview(df):
         unsafe_allow_html=True
     )
 
-# Placeholder functions for other pages
-def show_supply_chain_risk(df):
-    st.header("⚠️ Supply Chain Risk Analysis")
-    st.info("Coming soon - AI-powered risk assessment")
 
+def show_supply_chain_risk(df):
+    """Display focused Supply Chain Risk Analysis"""
+    
+    st.header("⚠️ Supply Chain Risk Analysis")
+    st.markdown("AI-powered risk identification and mitigation strategies")
+    
+    # AI Risk Analysis Section
+    st.subheader("🤖 AI-Powered Risk Analysis")
+    insights = generate_risk_analysis(df)
+    for insight in insights:
+        st.markdown(insight)
+    
+    # Recommended Actions Section
+    st.subheader("📋 Recommended Actions")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **Immediate Actions:**
+        • Review delayed shipments with logistics partners
+        • Implement performance monitoring alerts  
+        • Consider backup logistics options
+        """)
+    
+    with col2:
+        st.markdown("""
+        **Strategic Improvements:**
+        • Renegotiate contracts with underperforming partners
+        • Diversify logistics partner portfolio
+        • Implement predictive delay alerts
+        """)
+    
+    st.markdown("---")
+    
+    # Risk Visualizations (focused on problems only)
+    st.subheader("🔍 Risk Analysis")
+    
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        risk_heatmap = create_risk_heatmap(df)
+        if risk_heatmap:
+            st.plotly_chart(risk_heatmap, use_container_width=True)
+    
+    with col4:
+        partner_chart = create_logistics_partner_comparison(df)
+        if partner_chart:
+            st.plotly_chart(partner_chart, use_container_width=True)
+    
+    # Risk Summary
+    col5, col6 = st.columns(2)
+    
+    with col5:
+        logistics_chart = create_logistics_performance_chart(df)
+        if logistics_chart:
+            st.plotly_chart(logistics_chart, use_container_width=True)
+    
+    with col6:
+        cost_chart = create_cost_impact_donut(df)
+        if cost_chart:
+            st.plotly_chart(cost_chart, use_container_width=True)
+
+def show_performance_analytics(df):
+    """Display Performance Analytics page"""
+    
+    st.header("📊 Performance Analytics")
+    st.markdown("Comprehensive performance monitoring and delivery analysis")
+    
+    # Performance Overview Section
+    st.subheader("🎯 Overall Performance")
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        gauge_chart = create_delivery_performance_gauge(df)
+        if gauge_chart:
+            st.plotly_chart(gauge_chart, use_container_width=True)
+    
+    with col2:
+        st.markdown("#### 📋 Delivery Status Summary")
+        summary_table = create_delivery_status_summary(df)
+        if summary_table is not None:
+            st.dataframe(summary_table, use_container_width=True, hide_index=True)
+    
+    # Detailed Analytics Section
+    st.markdown("---")
+    st.subheader("📈 Detailed Performance Analysis")
+    
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        shipping_chart = create_shipping_method_analysis(df)
+        if shipping_chart:
+            st.plotly_chart(shipping_chart, use_container_width=True)
+    
+    with col4:
+        warehouse_chart = create_cost_by_warehouse(df)
+        if warehouse_chart:
+            st.plotly_chart(warehouse_chart, use_container_width=True)
+    
+    # Performance Insights
+    st.markdown("---")
+    st.subheader("💡 Performance Insights")
+    
+    col5, col6, col7 = st.columns(3)
+    
+    with col5:
+        delivered_rate = len(df[df['Delivery Status'] == 'Delivered']) / len(df) * 100
+        st.metric("Delivery Success Rate", f"{delivered_rate:.1f}%")
+    
+    with col6:
+        avg_cost = df['Total Cost'].mean()
+        st.metric("Average Order Cost", f"${avg_cost:,.0f}")
+    
+    with col7:
+        best_method = df.groupby('Shipping Method')['Delivery Status'].apply(
+            lambda x: (x == 'Delivered').mean()
+        ).idxmax()
+        st.metric("Best Shipping Method", best_method)
+        
+# Placeholder functions for other pages
 def show_inventory_management(df):
     st.header("📦 Inventory Management")
     st.info("Coming soon - Predictive inventory optimization")
