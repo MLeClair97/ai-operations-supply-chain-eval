@@ -153,10 +153,10 @@ def create_shipping_method_analysis(df):
         shipping_stats.columns = ['Delay_Rate', 'Order_Count', 'Avg_Cost', 'Total_Cost']
         shipping_stats = shipping_stats.reset_index()
         
-        # Create subplot with dual y-axis
+        # Create subplot with dual y-axis - REMOVE the subplot_titles parameter
         fig = make_subplots(
-            specs=[[{"secondary_y": True}]],
-            subplot_titles=('Shipping Method Performance Analysis',)
+            specs=[[{"secondary_y": True}]]
+            # Removed: subplot_titles=('Shipping Method Performance Analysis',)
         )
         
         # Add delay rate bars
@@ -167,7 +167,8 @@ def create_shipping_method_analysis(df):
                 y=shipping_stats['Delay_Rate'],
                 marker_color='#DC143C',
                 text=shipping_stats['Delay_Rate'].astype(str) + '%',
-                textposition='auto'  # CHANGED: Better text positioning
+                textposition='inside',
+                textfont=dict(size=12, color='white')
             ),
             secondary_y=False,
         )
@@ -191,11 +192,11 @@ def create_shipping_method_analysis(df):
         fig.update_yaxes(title_text="Average Cost ($)", secondary_y=True)
         
         fig.update_layout(
-            height=450,  # INCREASED HEIGHT
+            title='Shipping Method Performance Analysis',  # Add title here instead
+            height=450,
             template='plotly_dark',
             showlegend=True,
-            margin=dict(t=80, b=60, l=60, r=60),  # ADDED MARGINS
-            title_y=0.95
+            margin=dict(t=60, b=40, l=50, r=50)
         )
         
         return fig
@@ -433,3 +434,771 @@ def create_cost_by_warehouse(df):
         st.error(f"Error creating warehouse analysis: {str(e)}")
         return None
     
+def create_performance_over_time(df):
+    """Create a performance trend chart showing delivery success over time"""
+    try:
+        if not all(col in df.columns for col in ['Delivery Date', 'Delivery Status']):
+            return None
+        
+        # Convert delivery date and create weekly periods
+        df_copy = df.copy()
+        df_copy['Delivery Date'] = pd.to_datetime(df_copy['Delivery Date'])
+        df_copy['Week'] = df_copy['Delivery Date'].dt.to_period('W').dt.start_time
+        
+        # Calculate weekly performance metrics
+        weekly_stats = df_copy.groupby('Week').agg({
+            'Delivery Status': [
+                lambda x: (x == 'Delivered').mean() * 100,  # Success rate
+                lambda x: (x == 'Delayed').mean() * 100,    # Delay rate
+                lambda x: (x == 'In Transit').mean() * 100, # In transit rate
+                'count'  # Total orders
+            ]
+        }).round(1)
+        
+        weekly_stats.columns = ['Success_Rate', 'Delay_Rate', 'InTransit_Rate', 'Total_Orders']
+        weekly_stats = weekly_stats.reset_index()
+        
+        # Create multi-line chart
+        fig = go.Figure()
+        
+        # Success rate line (primary focus)
+        fig.add_trace(go.Scatter(
+            x=weekly_stats['Week'],
+            y=weekly_stats['Success_Rate'],
+            mode='lines+markers',
+            name='Delivery Success Rate',
+            line=dict(color='#2E8B57', width=3),
+            marker=dict(size=8),
+            hovertemplate='Week: %{x}<br>Success Rate: %{y:.1f}%<extra></extra>'
+        ))
+        
+        # Delay rate line (problem indicator)
+        fig.add_trace(go.Scatter(
+            x=weekly_stats['Week'],
+            y=weekly_stats['Delay_Rate'],
+            mode='lines+markers',
+            name='Delay Rate',
+            line=dict(color='#DC143C', width=2, dash='dash'),
+            marker=dict(size=6),
+            hovertemplate='Week: %{x}<br>Delay Rate: %{y:.1f}%<extra></extra>'
+        ))
+        
+        # Add target line for success rate
+        fig.add_hline(
+            y=80, 
+            line_dash="dot", 
+            line_color="orange",
+            annotation_text="Target: 80% Success Rate",
+            annotation_position="top right"
+        )
+        
+        # Add annotations for significant changes
+        if len(weekly_stats) > 1:
+            # Find week with biggest improvement/decline
+            success_changes = weekly_stats['Success_Rate'].diff()
+            if not success_changes.empty:
+                max_change_idx = success_changes.abs().idxmax()
+                if pd.notna(success_changes.iloc[max_change_idx]):
+                    change_week = weekly_stats.iloc[max_change_idx]
+                    change_value = success_changes.iloc[max_change_idx]
+                    
+                    annotation_text = f"{'Improvement' if change_value > 0 else 'Decline'}: {abs(change_value):.1f}%"
+                    fig.add_annotation(
+                        x=change_week['Week'],
+                        y=change_week['Success_Rate'],
+                        text=annotation_text,
+                        showarrow=True,
+                        arrowhead=2,
+                        arrowcolor="white",
+                        bgcolor="rgba(0,0,0,0.8)",
+                        bordercolor="white",
+                        borderwidth=1
+                    )
+        
+        fig.update_layout(
+            title='Delivery Performance Trends Over Time',
+            xaxis_title='Week',
+            yaxis_title='Performance Rate (%)',
+            height=400,
+            template='plotly_dark',
+            hovermode='x unified',
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
+        )
+        
+        # Format x-axis to show dates nicely
+        fig.update_xaxes(
+            tickformat='%m/%d',
+            tickangle=45
+        )
+        
+        return fig
+        
+    except Exception as e:
+        st.error(f"Error creating performance over time chart: {str(e)}")
+        return None
+
+def create_delivery_volume_trends(df):
+    """Create a chart showing order volume and composition over time"""
+    try:
+        if not all(col in df.columns for col in ['Delivery Date', 'Delivery Status']):
+            return None
+        
+        # Convert delivery date and create weekly periods
+        df_copy = df.copy()
+        df_copy['Delivery Date'] = pd.to_datetime(df_copy['Delivery Date'])
+        df_copy['Week'] = df_copy['Delivery Date'].dt.to_period('W').dt.start_time
+        
+        # Calculate weekly volume by status
+        weekly_volume = df_copy.groupby(['Week', 'Delivery Status']).size().reset_index(name='Count')
+        
+        # Create stacked area chart
+        fig = px.area(
+            weekly_volume,
+            x='Week',
+            y='Count',
+            color='Delivery Status',
+            title='Order Volume and Status Distribution Over Time',
+            color_discrete_map={
+                'Delivered': '#2E8B57',
+                'Delayed': '#DC143C',
+                'In Transit': '#4682B4',
+                'Pending': '#FFD700'
+            }
+        )
+        
+        fig.update_layout(
+            height=350,
+            template='plotly_dark',
+            xaxis_title='Week',
+            yaxis_title='Number of Orders',
+            hovermode='x unified'
+        )
+        
+        # Format x-axis
+        fig.update_xaxes(
+            tickformat='%m/%d',
+            tickangle=45
+        )
+        
+        return fig
+        
+    except Exception as e:
+        st.error(f"Error creating volume trends chart: {str(e)}")
+        return None
+    
+# Add these functions to your supply_chain_viz.py file
+
+def create_inventory_by_product_chart(df):
+    """Create inventory analysis by product"""
+    try:
+        if not all(col in df.columns for col in ['Product', 'Quantity', 'Total Cost']):
+            return None
+        
+        # Calculate inventory metrics by product
+        inventory_stats = df.groupby('Product').agg({
+            'Quantity': ['sum', 'count', 'mean'],
+            'Total Cost': ['sum', 'mean'],
+            'Unit Price': 'mean'
+        }).round(2)
+        
+        inventory_stats.columns = ['Total_Qty', 'Order_Count', 'Avg_Qty', 'Total_Value', 'Avg_Value', 'Unit_Price']
+        inventory_stats = inventory_stats.reset_index()
+        
+        # Create bubble chart: x=quantity, y=value, size=order_count
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=inventory_stats['Total_Qty'],
+            y=inventory_stats['Total_Value'],
+            mode='markers',
+            marker=dict(
+                size=inventory_stats['Order_Count'] * 8,  # Scale for visibility
+                color=inventory_stats['Unit_Price'],
+                colorscale='Viridis',
+                showscale=True,
+                colorbar=dict(title="Unit Price ($)"),
+                line=dict(width=2, color='white'),
+                sizemode='diameter',
+                sizeref=2
+            ),
+            text=[f"Product: {p}<br>Quantity: {q}<br>Value: ${v:,.0f}<br>Orders: {o}<br>Unit Price: ${up:.2f}" 
+                  for p, q, v, o, up in zip(inventory_stats['Product'], 
+                                          inventory_stats['Total_Qty'],
+                                          inventory_stats['Total_Value'],
+                                          inventory_stats['Order_Count'],
+                                          inventory_stats['Unit_Price'])],
+            hovertemplate='%{text}<extra></extra>',
+            name='Products'
+        ))
+        
+        fig.update_layout(
+            title='Product Inventory Analysis',
+            xaxis_title='Total Quantity',
+            yaxis_title='Total Inventory Value ($)',
+            height=400,
+            template='plotly_dark'
+        )
+        
+        return fig
+        
+    except Exception as e:
+        st.error(f"Error creating inventory by product chart: {str(e)}")
+        return None
+
+def create_inventory_turnover_analysis(df):
+    """Create inventory turnover analysis by warehouse"""
+    try:
+        if not all(col in df.columns for col in ['Warehouse Location', 'Quantity', 'Total Cost', 'Delivery Status']):
+            return None
+        
+        # Calculate turnover metrics by warehouse
+        warehouse_stats = df.groupby('Warehouse Location').agg({
+            'Quantity': 'sum',
+            'Total Cost': 'sum',
+            'Delivery Status': ['count', lambda x: (x == 'Delivered').sum()]
+        }).round(2)
+        
+        warehouse_stats.columns = ['Total_Quantity', 'Total_Value', 'Total_Orders', 'Delivered_Orders']
+        warehouse_stats = warehouse_stats.reset_index()
+        
+        # Calculate metrics
+        warehouse_stats['Turnover_Rate'] = (warehouse_stats['Delivered_Orders'] / warehouse_stats['Total_Orders'] * 100).round(1)
+        warehouse_stats['Avg_Order_Size'] = (warehouse_stats['Total_Quantity'] / warehouse_stats['Total_Orders']).round(1)
+        
+        # Create the chart with manual x-positions for proper grouping
+        fig = go.Figure()
+        
+        # Create custom x-positions for grouped bars
+        x_positions = list(range(len(warehouse_stats)))
+        x_labels = warehouse_stats['Warehouse Location'].tolist()
+        
+        # Add turnover rate bars (left side of each group)
+        fig.add_trace(go.Bar(
+            name='Turnover Rate (%)',
+            x=[x - 0.2 for x in x_positions],  # Shift left
+            y=warehouse_stats['Turnover_Rate'],
+            width=0.35,  # Make bars narrower
+            marker_color='#2E8B57',
+            text=warehouse_stats['Turnover_Rate'].astype(str) + '%',
+            textposition='outside',
+            textfont=dict(size=12, color='white')
+        ))
+        
+        # Add average order size bars (right side of each group)
+        fig.add_trace(go.Bar(
+            name='Avg Order Size',
+            x=[x + 0.2 for x in x_positions],  # Shift right
+            y=warehouse_stats['Avg_Order_Size'],
+            width=0.35,  # Make bars narrower
+            marker_color='#4682B4',
+            text=warehouse_stats['Avg_Order_Size'].astype(str),
+            textposition='outside',
+            textfont=dict(size=12, color='white')
+        ))
+        
+        fig.update_layout(
+            title='Warehouse Inventory Turnover Analysis',
+            xaxis_title='Warehouse Location',
+            yaxis_title='Rate (%)',  # Single y-axis
+            height=450,
+            template='plotly_dark',
+            bargap=0.6,  # Space between groups
+            xaxis=dict(
+                tickmode='array',
+                tickvals=x_positions,
+                ticktext=x_labels
+            ),
+            margin=dict(t=80, b=60, l=80, r=80)
+        )
+        
+        return fig
+        
+    except Exception as e:
+        st.error(f"Error creating turnover analysis: {str(e)}")
+        return None
+
+def create_reorder_point_recommendations(df):
+    """Create reorder point recommendations based on demand patterns"""
+    try:
+        if not all(col in df.columns for col in ['Product', 'Quantity', 'Delivery Status']):
+            return None
+        
+        # Calculate demand statistics by product
+        demand_stats = df.groupby('Product').agg({
+            'Quantity': ['mean', 'std', 'sum', 'count']
+        }).round(2)
+        
+        demand_stats.columns = ['Avg_Demand', 'Demand_StdDev', 'Total_Demand', 'Order_Frequency']
+        demand_stats = demand_stats.reset_index()
+        
+        # Calculate safety stock and reorder points
+        demand_stats['Safety_Stock'] = (1.5 * demand_stats['Demand_StdDev']).round(0)
+        demand_stats['Current_Stock'] = demand_stats['Avg_Demand'] * 2
+        demand_stats['Reorder_Point'] = demand_stats['Current_Stock'] + demand_stats['Safety_Stock']
+        
+        # Reorder trigger level
+        reorder_level = demand_stats['Avg_Demand'] + (demand_stats['Safety_Stock'] * 0.5)
+        
+        fig = go.Figure()
+        
+        # Current stock level
+        fig.add_trace(go.Bar(
+            name='Current Stock',
+            x=demand_stats['Product'],
+            y=demand_stats['Current_Stock'],
+            marker_color='#4682B4'
+        ))
+        
+        # Safety stock buffer
+        fig.add_trace(go.Bar(
+            name='Safety Stock Buffer',
+            x=demand_stats['Product'],
+            y=demand_stats['Safety_Stock'],
+            marker_color='#FFD700'
+        ))
+        
+        # Reorder point line with text labels
+        fig.add_trace(go.Scatter(
+            name='Reorder Trigger Level',
+            x=demand_stats['Product'],
+            y=reorder_level,
+            mode='markers+lines+text',  # Added text mode
+            line=dict(color='#DC143C', width=3, dash='dash'),
+            marker=dict(size=10, color='#DC143C'),
+            text=[f"{val:.0f}" for val in reorder_level],  # Add numerical values
+            textposition="top center",  # Position text above points
+            textfont=dict(color='#DC143C', size=12),
+            hovertemplate='Product: %{x}<br>Reorder at: %{y:.0f} units<extra></extra>'  # Fixed hover
+        ))
+        
+        fig.update_layout(
+            title='Inventory Reorder Point Recommendations',
+            xaxis_title='Product',
+            yaxis_title='Inventory Quantity',
+            height=450,  # Increased height for text labels
+            template='plotly_dark',
+            barmode='stack',
+            margin=dict(t=80, b=60, l=60, r=60)  # Added margins for text space
+        )
+        
+        return fig
+        
+    except Exception as e:
+        st.error(f"Error creating reorder point recommendations: {str(e)}")
+        return None
+
+def create_inventory_summary_table(df):
+    """Create inventory summary statistics table with improved ABC analysis"""
+    try:
+        if not all(col in df.columns for col in ['Product', 'Quantity', 'Total Cost', 'Unit Price']):
+            return None
+        
+        # Calculate comprehensive inventory metrics
+        inventory_summary = df.groupby('Product').agg({
+            'Quantity': ['sum', 'mean', 'std'],
+            'Total Cost': ['sum', 'mean'],
+            'Unit Price': 'mean'
+        }).round(2)
+        
+        inventory_summary.columns = ['Total_Qty', 'Avg_Order_Qty', 'Qty_Variance', 'Total_Value', 'Avg_Order_Value', 'Unit_Price']
+        inventory_summary = inventory_summary.reset_index()
+        
+        # Calculate additional metrics
+        inventory_summary['Inventory_Turns'] = (inventory_summary['Total_Qty'] / inventory_summary['Avg_Order_Qty']).round(1)
+        inventory_summary['Value_Density'] = (inventory_summary['Total_Value'] / inventory_summary['Total_Qty']).round(2)
+        
+        # IMPROVED ABC Classification using weighted scoring
+        # Normalize metrics to 0-1 scale for comparison
+        inventory_summary['Value_Score'] = inventory_summary['Total_Value'] / inventory_summary['Total_Value'].max()
+        inventory_summary['Turn_Score'] = inventory_summary['Inventory_Turns'] / inventory_summary['Inventory_Turns'].max()
+        inventory_summary['Qty_Score'] = inventory_summary['Total_Qty'] / inventory_summary['Total_Qty'].max()
+        
+        # Combined score (60% value, 25% turnover, 15% quantity)
+        inventory_summary['ABC_Score'] = (
+            inventory_summary['Value_Score'] * 0.6 + 
+            inventory_summary['Turn_Score'] * 0.25 + 
+            inventory_summary['Qty_Score'] * 0.15
+        )
+        
+        # Classify based on combined score
+        inventory_summary = inventory_summary.sort_values('ABC_Score', ascending=False)
+        total_items = len(inventory_summary)
+        
+        # A: Top 20%, B: Next 30%, C: Bottom 50%
+        inventory_summary['ABC_Class'] = ['A'] * int(total_items * 0.2) + \
+                                        ['B'] * int(total_items * 0.3) + \
+                                        ['C'] * (total_items - int(total_items * 0.2) - int(total_items * 0.3))
+        
+        # Create display table
+        display_df = inventory_summary[['Product', 'ABC_Class', 'Total_Qty', 'Total_Value', 'Unit_Price', 'Inventory_Turns', 'ABC_Score']].copy()
+        display_df.columns = ['Product', 'ABC Class', 'Total Quantity', 'Total Value ($)', 'Unit Price ($)', 'Inventory Turns', 'Priority Score']
+        
+        # Round the priority score for display
+        display_df['Priority Score'] = display_df['Priority Score'].round(3)
+        
+        return display_df
+        
+    except Exception as e:
+        st.error(f"Error creating inventory summary table: {str(e)}")
+        return None
+
+def calculate_inventory_kpis(df):
+    """Calculate key inventory management KPIs"""
+    try:
+        if df.empty:
+            return {}
+        
+        total_inventory_value = df['Total Cost'].sum()
+        total_quantity = df['Quantity'].sum()
+        avg_unit_price = df['Unit Price'].mean()
+        total_orders = len(df)
+        
+        # Calculate turnover rate
+        delivered_orders = len(df[df['Delivery Status'] == 'Delivered'])
+        turnover_rate = (delivered_orders / total_orders * 100) if total_orders > 0 else 0
+        
+        # Calculate inventory diversity
+        unique_products = df['Product'].nunique()
+        unique_suppliers = df['Supplier'].nunique()
+        
+        # Stock level distribution
+        high_value_items = len(df[df['Total Cost'] > df['Total Cost'].quantile(0.8)])
+        
+        return {
+            'total_inventory_value': total_inventory_value,
+            'total_quantity': total_quantity,
+            'avg_unit_price': avg_unit_price,
+            'turnover_rate': turnover_rate,
+            'unique_products': unique_products,
+            'unique_suppliers': unique_suppliers,
+            'high_value_items': high_value_items,
+            'total_orders': total_orders
+        }
+        
+    except Exception as e:
+        st.error(f"Error calculating inventory KPIs: {str(e)}")
+        return {}
+    
+# Add these functions to your supply_chain_viz.py file
+
+def create_cost_breakdown_analysis(df):
+    """Create cost breakdown analysis by different dimensions"""
+    try:
+        if not all(col in df.columns for col in ['Supplier', 'Product', 'Warehouse Location', 'Total Cost']):
+            return None
+        
+        # Calculate cost breakdown by supplier
+        supplier_costs = df.groupby('Supplier')['Total Cost'].sum().reset_index()
+        supplier_costs = supplier_costs.sort_values('Total Cost', ascending=True)
+        
+        # Create horizontal bar chart for better readability
+        fig = go.Figure()
+        
+        fig.add_trace(go.Bar(
+            x=supplier_costs['Total Cost'],
+            y=supplier_costs['Supplier'],
+            orientation='h',
+            marker_color='#2E8B57',
+            text=[f"${cost:,.0f}" for cost in supplier_costs['Total Cost']],
+            textposition='inside',  # Changed from 'outside' to 'inside'
+            textfont=dict(size=12, color='white')  # Added font styling
+        ))
+        
+        fig.update_layout(
+            title='Cost Distribution by Supplier',
+            xaxis_title='Total Cost ($)',
+            yaxis_title='Supplier',
+            height=400,
+            template='plotly_dark',
+            margin=dict(l=100, r=100, t=50, b=50)  # Increased right margin
+        )
+        
+        return fig
+        
+    except Exception as e:
+        st.error(f"Error creating cost breakdown analysis: {str(e)}")
+        return None
+
+def create_cost_efficiency_matrix(df):
+    """Create cost efficiency matrix comparing unit costs across suppliers and products"""
+    try:
+        if not all(col in df.columns for col in ['Supplier', 'Product', 'Unit Price', 'Quantity']):
+            return None
+        
+        # Calculate average unit price by supplier-product combination
+        efficiency_matrix = df.groupby(['Supplier', 'Product']).agg({
+            'Unit Price': 'mean',
+            'Quantity': 'sum',
+            'Total Cost': 'sum'
+        }).round(2)
+        
+        efficiency_matrix = efficiency_matrix.reset_index()
+        
+        # Create pivot for heatmap
+        price_matrix = efficiency_matrix.pivot(
+            index='Product',
+            columns='Supplier', 
+            values='Unit Price'
+        ).fillna(0)
+        
+        # Create heatmap
+        fig = go.Figure(data=go.Heatmap(
+            z=price_matrix.values,
+            x=price_matrix.columns,
+            y=price_matrix.index,
+            colorscale='RdYlGn_r',  # Red = expensive, Green = cheap
+            text=price_matrix.values,
+            texttemplate="$%{text:.0f}",
+            textfont={"size": 12},
+            colorbar=dict(title="Unit Price ($)")
+        ))
+        
+        fig.update_layout(
+            title='Unit Price Comparison: Supplier vs Product',
+            xaxis_title='Supplier',
+            yaxis_title='Product',
+            height=400,
+            template='plotly_dark'
+        )
+        
+        return fig
+        
+    except Exception as e:
+        st.error(f"Error creating cost efficiency matrix: {str(e)}")
+        return None
+
+def create_cost_savings_opportunities(df):
+    """Identify and visualize potential cost savings opportunities"""
+    try:
+        if not all(col in df.columns for col in ['Supplier', 'Product', 'Unit Price', 'Quantity', 'Total Cost']):
+            return None
+        
+        # Calculate cost savings opportunities by finding price differences
+        product_costs = df.groupby(['Product', 'Supplier']).agg({
+            'Unit Price': 'mean',
+            'Quantity': 'sum',
+            'Total Cost': 'sum'
+        }).reset_index()
+        
+        # Find min and max prices for each product
+        price_analysis = product_costs.groupby('Product').agg({
+            'Unit Price': ['min', 'max', 'mean'],
+            'Quantity': 'sum'
+        }).round(2)
+        
+        price_analysis.columns = ['Min_Price', 'Max_Price', 'Avg_Price', 'Total_Quantity']
+        price_analysis = price_analysis.reset_index()
+        
+        # Calculate potential savings
+        price_analysis['Price_Spread'] = price_analysis['Max_Price'] - price_analysis['Min_Price']
+        price_analysis['Potential_Savings'] = (price_analysis['Price_Spread'] * price_analysis['Total_Quantity'])
+        price_analysis['Savings_Opportunity'] = price_analysis['Potential_Savings'] / (price_analysis['Avg_Price'] * price_analysis['Total_Quantity']) * 100
+        
+        # Create savings opportunity chart
+        fig = go.Figure()
+        
+        fig.add_trace(go.Bar(
+            x=price_analysis['Product'],
+            y=price_analysis['Potential_Savings'],
+            marker_color=['#DC143C' if x > price_analysis['Potential_Savings'].quantile(0.75) 
+                         else '#FFD700' if x > price_analysis['Potential_Savings'].quantile(0.5)
+                         else '#2E8B57' for x in price_analysis['Potential_Savings']],
+            text=[f"${savings:,.0f}<br>({pct:.1f}%)" for savings, pct in 
+                  zip(price_analysis['Potential_Savings'], price_analysis['Savings_Opportunity'])],
+            textposition='inside',  # Changed from 'outside' to 'inside'
+            textfont=dict(size=11, color='white')  # Added font styling
+        ))
+        
+        fig.update_layout(
+            title='Cost Savings Opportunities by Product',
+            xaxis_title='Product',
+            yaxis_title='Potential Annual Savings ($)',
+            height=450,  # Increased height
+            template='plotly_dark',
+            showlegend=False,
+            margin=dict(t=80, b=60, l=80, r=80)  # Increased margins
+        )
+        
+        return fig
+        
+    except Exception as e:
+        st.error(f"Error creating cost savings opportunities: {str(e)}")
+        return None
+
+def create_logistics_cost_analysis(df):
+    """Analyze logistics costs by shipping method and partner"""
+    try:
+        if not all(col in df.columns for col in ['Shipping Method', 'Logistics Partner', 'Total Cost', 'Delivery Status']):
+            return None
+        
+        # Calculate average cost per shipment by method and partner
+        logistics_costs = df.groupby(['Shipping Method', 'Logistics Partner']).agg({
+            'Total Cost': ['mean', 'sum', 'count'],
+            'Delivery Status': lambda x: (x == 'Delayed').mean() * 100
+        }).round(2)
+        
+        logistics_costs.columns = ['Avg_Cost', 'Total_Cost', 'Shipment_Count', 'Delay_Rate']
+        logistics_costs = logistics_costs.reset_index()
+        
+        # Create bubble chart: x=avg cost, y=delay rate, size=shipment count
+        fig = go.Figure()
+        
+        # Color by shipping method
+        colors = {'Air': '#FF6B6B', 'Road': '#4ECDC4', 'Rail': '#45B7D1', 'Sea': '#96CEB4'}
+        
+        for method in logistics_costs['Shipping Method'].unique():
+            method_data = logistics_costs[logistics_costs['Shipping Method'] == method]
+            
+            fig.add_trace(go.Scatter(
+                x=method_data['Avg_Cost'],
+                y=method_data['Delay_Rate'],
+                mode='markers',
+                marker=dict(
+                    size=method_data['Shipment_Count'] * 3,
+                    color=colors.get(method, '#888888'),
+                    line=dict(width=2, color='white'),
+                    sizemode='diameter'
+                ),
+                text=[f"Method: {method}<br>Partner: {partner}<br>Avg Cost: ${cost:.0f}<br>Delay Rate: {delay:.1f}%<br>Shipments: {count}"
+                      for method, partner, cost, delay, count in zip(
+                          method_data['Shipping Method'], method_data['Logistics Partner'],
+                          method_data['Avg_Cost'], method_data['Delay_Rate'], method_data['Shipment_Count'])],
+                hovertemplate='%{text}<extra></extra>',
+                name=method
+            ))
+        
+        fig.update_layout(
+            title='Logistics Cost vs Performance Analysis',
+            xaxis_title='Average Cost per Shipment ($)',
+            yaxis_title='Delay Rate (%)',
+            height=450,
+            template='plotly_dark'
+        )
+        
+        # Add quadrant lines
+        avg_cost = logistics_costs['Avg_Cost'].mean()
+        avg_delay = logistics_costs['Delay_Rate'].mean()
+        
+        fig.add_vline(x=avg_cost, line_dash="dash", line_color="gray", opacity=0.5)
+        fig.add_hline(y=avg_delay, line_dash="dash", line_color="gray", opacity=0.5)
+        
+        return fig
+        
+    except Exception as e:
+        st.error(f"Error creating logistics cost analysis: {str(e)}")
+        return None
+
+def calculate_cost_optimization_kpis(df):
+    """Calculate key cost optimization KPIs"""
+    try:
+        if df.empty:
+            return {}
+        
+        total_cost = df['Total Cost'].sum()
+        avg_unit_cost = df['Unit Price'].mean()
+        total_quantity = df['Quantity'].sum()
+        cost_per_unit = total_cost / total_quantity if total_quantity > 0 else 0
+        
+        # Calculate cost distribution
+        supplier_costs = df.groupby('Supplier')['Total Cost'].sum()
+        top_supplier_pct = supplier_costs.max() / total_cost * 100
+        
+        # Calculate potential savings from price optimization
+        product_analysis = df.groupby('Product').agg({
+            'Unit Price': ['min', 'max'],
+            'Quantity': 'sum'
+        })
+        
+        potential_savings = 0
+        for product in product_analysis.index:
+            min_price = product_analysis.loc[product, ('Unit Price', 'min')]
+            max_price = product_analysis.loc[product, ('Unit Price', 'max')]
+            quantity = product_analysis.loc[product, ('Quantity', 'sum')]
+            potential_savings += (max_price - min_price) * quantity
+        
+        savings_percentage = potential_savings / total_cost * 100 if total_cost > 0 else 0
+        
+        # Logistics cost efficiency
+        delayed_cost = df[df['Delivery Status'] == 'Delayed']['Total Cost'].sum()
+        delay_cost_impact = delayed_cost / total_cost * 100
+        
+        return {
+            'total_cost': total_cost,
+            'avg_unit_cost': avg_unit_cost,
+            'cost_per_unit': cost_per_unit,
+            'top_supplier_concentration': top_supplier_pct,
+            'potential_savings': potential_savings,
+            'savings_percentage': savings_percentage,
+            'delay_cost_impact': delay_cost_impact,
+            'total_quantity': total_quantity
+        }
+        
+    except Exception as e:
+        st.error(f"Error calculating cost optimization KPIs: {str(e)}")
+        return {}
+
+def generate_cost_optimization_recommendations(df):
+    """Generate AI-powered cost optimization recommendations"""
+    try:
+        if df.empty:
+            return []
+        
+        recommendations = []
+        
+        # Analyze supplier concentration
+        supplier_costs = df.groupby('Supplier')['Total Cost'].sum().sort_values(ascending=False)
+        total_cost = df['Total Cost'].sum()
+        top_supplier_pct = supplier_costs.iloc[0] / total_cost * 100
+        
+        if top_supplier_pct > 40:
+            recommendations.append(f"**Supplier Diversification**: {supplier_costs.index[0]} represents {top_supplier_pct:.1f}% of total costs. Consider diversifying suppliers to reduce concentration risk and increase negotiating power.")
+        
+        # Analyze price variations
+        product_price_analysis = df.groupby('Product').agg({
+            'Unit Price': ['min', 'max', 'std'],
+            'Quantity': 'sum',
+            'Total Cost': 'sum'
+        })
+        
+        high_variation_products = []
+        for product in product_price_analysis.index:
+            price_std = product_price_analysis.loc[product, ('Unit Price', 'std')]
+            price_mean = product_price_analysis.loc[product, ('Unit Price', 'min')]
+            if price_std / price_mean > 0.15:  # High price variation
+                high_variation_products.append(product)
+        
+        if high_variation_products:
+            recommendations.append(f"**Price Standardization**: Products {', '.join(high_variation_products)} show high price variation. Negotiate standard pricing agreements to reduce cost volatility.")
+        
+        # Analyze logistics efficiency
+        logistics_efficiency = df.groupby(['Shipping Method', 'Logistics Partner']).agg({
+            'Total Cost': 'mean',
+            'Delivery Status': lambda x: (x == 'Delayed').mean() * 100
+        })
+        
+        inefficient_logistics = logistics_efficiency[
+            (logistics_efficiency['Total Cost'] > logistics_efficiency['Total Cost'].quantile(0.75)) &
+            (logistics_efficiency['Delivery Status'] > logistics_efficiency['Delivery Status'].quantile(0.75))
+        ]
+        
+        if not inefficient_logistics.empty:
+            recommendations.append(f"**Logistics Optimization**: Review high-cost, high-delay shipping combinations. Consider alternative logistics partners or shipping methods for better cost-performance balance.")
+        
+        # Volume-based recommendations
+        low_volume_suppliers = df.groupby('Supplier')['Quantity'].sum().sort_values()
+        if len(low_volume_suppliers) > 1:
+            smallest_volumes = low_volume_suppliers.head(2)
+            recommendations.append(f"**Volume Consolidation**: Consider consolidating low-volume suppliers ({', '.join(smallest_volumes.index)}) to achieve better volume discounts and reduce administrative costs.")
+        
+        return recommendations
+        
+    except Exception as e:
+        st.error(f"Error generating cost optimization recommendations: {str(e)}")
+        return []

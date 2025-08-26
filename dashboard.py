@@ -5,8 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from src.data_processing.supply_chain_loader import (
     load_supply_chain_data, 
-    calculate_supply_chain_metrics,
-    get_supplier_performance
+    calculate_supply_chain_metrics
 )
 from src.ai_insights.operations_analyzer import generate_risk_analysis
 from src.visualizations.supply_chain_viz import (
@@ -14,10 +13,22 @@ from src.visualizations.supply_chain_viz import (
     create_risk_heatmap,
     create_shipping_method_analysis,
     create_cost_impact_donut,
-    create_delivery_performance_gauge,
     create_delivery_status_summary,
     create_logistics_partner_comparison,
-    create_cost_by_warehouse
+    create_cost_by_warehouse,
+    create_performance_over_time, 
+    create_delivery_volume_trends,
+    create_inventory_by_product_chart,
+    create_inventory_turnover_analysis,
+    create_reorder_point_recommendations,
+    create_inventory_summary_table,
+    calculate_inventory_kpis,
+    create_cost_breakdown_analysis,
+    create_cost_efficiency_matrix,
+    create_cost_savings_opportunities,
+    create_logistics_cost_analysis,
+    calculate_cost_optimization_kpis,
+    generate_cost_optimization_recommendations
 )
 
 # Page config
@@ -226,66 +237,276 @@ def show_performance_analytics(df):
     st.header("📊 Performance Analytics")
     st.markdown("Comprehensive performance monitoring and delivery analysis")
     
-    # Performance Overview Section
-    st.subheader("🎯 Overall Performance")
+    # Performance Insights at TOP (moved from bottom)
+    st.subheader("💡 Key Performance Metrics")
     
-    col1, col2 = st.columns([1, 2])
+    col1, col2, col3, col4 = st.columns(4)  # Use 4 columns for better spacing
     
     with col1:
-        gauge_chart = create_delivery_performance_gauge(df)
-        if gauge_chart:
-            st.plotly_chart(gauge_chart, use_container_width=True)
+        delivered_rate = len(df[df['Delivery Status'] == 'Delivered']) / len(df) * 100
+        st.metric("Delivery Success Rate", f"{delivered_rate:.1f}%")
     
     with col2:
+        avg_cost = df['Total Cost'].mean()
+        st.metric("Average Order Cost", f"${avg_cost:,.0f}")
+    
+    with col3:
+        best_method = df.groupby('Shipping Method')['Delivery Status'].apply(
+            lambda x: (x == 'Delivered').mean()
+        ).idxmax()
+        st.metric("Best Shipping Method", best_method)
+    
+    with col4:
+        # Add another useful metric
+        total_orders = len(df)
+        at_risk_orders = len(df[df['Delivery Status'].isin(['Delayed', 'Pending'])])
+        st.metric("Orders Needing Attention", f"{at_risk_orders}/{total_orders}")
+    
+    st.markdown("---")
+    
+    # Performance Trends Section
+    st.subheader("📈 Performance Trends")
+    
+    col5, col6 = st.columns([2, 1])
+    
+    with col5:
+        performance_chart = create_performance_over_time(df)
+        if performance_chart:
+            st.plotly_chart(performance_chart, use_container_width=True)
+    
+    with col6:
         st.markdown("#### 📋 Delivery Status Summary")
         summary_table = create_delivery_status_summary(df)
         if summary_table is not None:
             st.dataframe(summary_table, use_container_width=True, hide_index=True)
     
+    # Volume Trends
+    volume_chart = create_delivery_volume_trends(df)
+    if volume_chart:
+        st.plotly_chart(volume_chart, use_container_width=True)
+    
     # Detailed Analytics Section
     st.markdown("---")
     st.subheader("📈 Detailed Performance Analysis")
     
-    col3, col4 = st.columns(2)
+    col7, col8 = st.columns(2)
     
-    with col3:
+    with col7:
         shipping_chart = create_shipping_method_analysis(df)
         if shipping_chart:
             st.plotly_chart(shipping_chart, use_container_width=True)
     
-    with col4:
+    with col8:
         warehouse_chart = create_cost_by_warehouse(df)
         if warehouse_chart:
             st.plotly_chart(warehouse_chart, use_container_width=True)
-    
-    # Performance Insights
-    st.markdown("---")
-    st.subheader("💡 Performance Insights")
-    
-    col5, col6, col7 = st.columns(3)
-    
-    with col5:
-        delivered_rate = len(df[df['Delivery Status'] == 'Delivered']) / len(df) * 100
-        st.metric("Delivery Success Rate", f"{delivered_rate:.1f}%")
-    
-    with col6:
-        avg_cost = df['Total Cost'].mean()
-        st.metric("Average Order Cost", f"${avg_cost:,.0f}")
-    
-    with col7:
-        best_method = df.groupby('Shipping Method')['Delivery Status'].apply(
-            lambda x: (x == 'Delivered').mean()
-        ).idxmax()
-        st.metric("Best Shipping Method", best_method)
         
-# Placeholder functions for other pages
+
 def show_inventory_management(df):
     st.header("📦 Inventory Management")
-    st.info("Coming soon - Predictive inventory optimization")
+    st.markdown("AI-powered inventory optimization and demand forecasting")
+    
+    # Calculate KPIs
+    kpis = calculate_inventory_kpis(df)
+    
+    # KPI Row
+    st.subheader("📊 Inventory Overview")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric(
+            "Total Inventory Value", 
+            f"${kpis.get('total_inventory_value', 0):,.0f}"
+        )
+    
+    with col2:
+        st.metric(
+            "Total Units", 
+            f"{kpis.get('total_quantity', 0):,.0f}"
+        )
+    
+    with col3:
+        st.metric(
+            "Turnover Rate", 
+            f"{kpis.get('turnover_rate', 0):.1f}%"
+        )
+    
+    with col4:
+        st.metric(
+            "Product Lines", 
+            f"{kpis.get('unique_products', 0)}"
+        )
+    
+    st.markdown("---")
+    
+    # Inventory Analysis Charts
+    st.subheader("📈 Inventory Analysis")
+    
+    col5, col6 = st.columns(2)
+    
+    with col5:
+        product_chart = create_inventory_by_product_chart(df)
+        if product_chart:
+            st.plotly_chart(product_chart, use_container_width=True)
+    
+    with col6:
+        turnover_chart = create_inventory_turnover_analysis(df)
+        if turnover_chart:
+            st.plotly_chart(turnover_chart, use_container_width=True)
+    
+    # Reorder Recommendations
+    st.subheader("🎯 Reorder Point Recommendations")
+    
+    reorder_chart = create_reorder_point_recommendations(df)
+    if reorder_chart:
+        st.plotly_chart(reorder_chart, use_container_width=True)
+    
+    # Inventory Summary Table
+    st.markdown("---")
+    st.subheader("📋 Inventory Summary & ABC Analysis")
+    
+    st.markdown("""
+                **ABC Classification Methodology:**
+                Products are prioritized using a weighted scoring system that considers multiple factors:
+                - **60% Total Value**: Higher-value inventory gets priority
+                - **25% Inventory Turnover**: Items that move frequently are prioritized  
+                - **15% Total Quantity**: Volume considerations for operational impact
+
+                **Classifications:**
+                - **Class A**: Top 20% - Critical items requiring close management and frequent monitoring
+                - **Class B**: Next 30% - Important items with moderate management attention
+                - **Class C**: Bottom 50% - Routine items suitable for automated reordering systems
+                """)
+    col7, col8 = st.columns([2, 1])
+    
+    with col7:
+        summary_table = create_inventory_summary_table(df)
+        if summary_table is not None:
+            st.dataframe(summary_table, use_container_width=True, hide_index=True)
+    
+    with col8:
+        st.markdown("#### 💡 Key Insights")
+        if kpis:
+            avg_price = kpis.get('avg_unit_price', 0)
+            st.write(f"• Average unit price: ${avg_price:.2f}")
+            
+            high_value = kpis.get('high_value_items', 0)
+            total = kpis.get('total_orders', 1)
+            st.write(f"• High-value items: {high_value}/{total} ({high_value/total*100:.0f}%)")
+            
+            suppliers = kpis.get('unique_suppliers', 0)
+            products = kpis.get('unique_products', 0)
+            if products > 0:
+                st.write(f"• Supplier diversity: {suppliers/products:.1f} suppliers per product")
 
 def show_cost_optimization(df):
     st.header("💰 Cost Optimization")
-    st.info("Coming soon - AI cost optimization recommendations")
+    st.markdown("AI-powered cost analysis and savings opportunities identification")
+    
+    # Calculate cost KPIs
+    cost_kpis = calculate_cost_optimization_kpis(df)
+    
+    # Cost Overview KPIs
+    st.subheader("💵 Cost Overview")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric(
+            "Total Spend", 
+            f"${cost_kpis.get('total_cost', 0):,.0f}"
+        )
+    
+    with col2:
+        st.metric(
+            "Average Unit Cost", 
+            f"${cost_kpis.get('avg_unit_cost', 0):.2f}"
+        )
+    
+    with col3:
+        potential_savings = cost_kpis.get('potential_savings', 0)
+        savings_pct = cost_kpis.get('savings_percentage', 0)
+        st.metric(
+            "Potential Savings",
+            f"${potential_savings:,.0f}",
+            f"{savings_pct:.1f}% opportunity"
+        )
+    
+    with col4:
+        delay_impact = cost_kpis.get('delay_cost_impact', 0)
+        st.metric(
+            "Delay Cost Impact",
+            f"{delay_impact:.1f}%",
+            "of total spend"
+        )
+    
+    # AI Cost Optimization Recommendations
+    st.markdown("---")
+    st.subheader("🤖 AI Cost Optimization Recommendations")
+    
+    recommendations = generate_cost_optimization_recommendations(df)
+    if recommendations:
+        for i, rec in enumerate(recommendations, 1):
+            st.markdown(f"{i}. {rec}")
+    else:
+        st.info("No specific cost optimization opportunities identified with current data.")
+    
+    # Cost Analysis Charts
+    st.markdown("---")
+    st.subheader("📊 Cost Analysis")
+    
+    col5, col6 = st.columns(2)
+    
+    with col5:
+        breakdown_chart = create_cost_breakdown_analysis(df)
+        if breakdown_chart:
+            st.plotly_chart(breakdown_chart, use_container_width=True)
+    
+    with col6:
+        efficiency_chart = create_cost_efficiency_matrix(df)
+        if efficiency_chart:
+            st.plotly_chart(efficiency_chart, use_container_width=True)
+    
+    # Savings Opportunities
+    st.subheader("💡 Cost Savings Opportunities")
+    
+    savings_chart = create_cost_savings_opportunities(df)
+    if savings_chart:
+        st.plotly_chart(savings_chart, use_container_width=True)
+    
+    # Logistics Cost Analysis
+    st.subheader("🚚 Logistics Cost Efficiency")
+    
+    logistics_chart = create_logistics_cost_analysis(df)
+    if logistics_chart:
+        st.plotly_chart(logistics_chart, use_container_width=True)
+    
+    # Cost Optimization Summary
+    st.markdown("---")
+    st.subheader("📋 Cost Optimization Summary")
+    
+    col7, col8 = st.columns(2)
+    
+    with col7:
+        st.markdown("#### 🎯 Priority Actions")
+        st.write("1. **Supplier Consolidation**: Focus on top 2-3 suppliers for volume discounts")
+        st.write("2. **Price Standardization**: Negotiate consistent pricing across products")
+        st.write("3. **Logistics Optimization**: Review shipping method cost-effectiveness")
+        st.write("4. **Volume Leveraging**: Combine orders to achieve better rates")
+    
+    with col8:
+        st.markdown("#### 📈 Expected Impact")
+        if cost_kpis:
+            total_cost = cost_kpis.get('total_cost', 0)
+            potential = cost_kpis.get('potential_savings', 0)
+            
+            st.write(f"• **Current annual spend**: ${total_cost:,.0f}")
+            st.write(f"• **Potential annual savings**: ${potential:,.0f}")
+            if potential > 0:
+                roi_months = 6  # Assume 6-month implementation
+                st.write(f"• **ROI timeline**: {roi_months} months to implement")
+                st.write(f"• **Monthly savings target**: ${potential/12:,.0f}")
+
+# Placeholder functions for other pages
 
 def show_ai_insights(df):
     st.header("🤖 AI Insights")
