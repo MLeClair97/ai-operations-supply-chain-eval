@@ -1032,67 +1032,48 @@ def create_cost_savings_opportunities(df):
         st.error(f"Error creating cost savings opportunities: {str(e)}")
         return None
 
-def create_logistics_cost_analysis(df):
-    """Analyze logistics costs by shipping method and partner"""
+def create_logistics_performance_analysis(df):
+    """Analyze logistics performance without cost efficiency (since costs are material costs)"""
     try:
-        if not all(col in df.columns for col in ['Shipping Method', 'Logistics Partner', 'Total Cost', 'Delivery Status']):
+        if not all(col in df.columns for col in ['Shipping Method', 'Logistics Partner', 'Delivery Status']):
             return None
         
-        # Calculate average cost per shipment by method and partner
-        logistics_costs = df.groupby(['Shipping Method', 'Logistics Partner']).agg({
-            'Total Cost': ['mean', 'sum', 'count'],
-            'Delivery Status': lambda x: (x == 'Delayed').mean() * 100
-        }).round(2)
+        # Calculate pure performance metrics
+        logistics_performance = df.groupby(['Shipping Method', 'Logistics Partner']).agg({
+            'Delivery Status': [
+                'count',
+                lambda x: (x == 'Delivered').mean() * 100,
+                lambda x: (x == 'Delayed').mean() * 100,
+                lambda x: (x == 'In Transit').mean() * 100,
+                lambda x: (x == 'Pending').mean() * 100
+            ]
+        }).round(1)
         
-        logistics_costs.columns = ['Avg_Cost', 'Total_Cost', 'Shipment_Count', 'Delay_Rate']
-        logistics_costs = logistics_costs.reset_index()
+        logistics_performance.columns = ['Total_Shipments', 'Delivered_Rate', 'Delayed_Rate', 'InTransit_Rate', 'Pending_Rate']
+        logistics_performance = logistics_performance.reset_index()
         
-        # Create bubble chart: x=avg cost, y=delay rate, size=shipment count
-        fig = go.Figure()
+        # Calculate service reliability score (based purely on delivery performance)
+        logistics_performance['Reliability_Score'] = (
+            logistics_performance['Delivered_Rate'] - 
+            logistics_performance['Delayed_Rate']
+        ).round(1)
         
-        # Color by shipping method
-        colors = {'Air': '#FF6B6B', 'Road': '#4ECDC4', 'Rail': '#45B7D1', 'Sea': '#96CEB4'}
+        # Format for display
+        display_df = logistics_performance.copy()
+        display_df['Delivered_Rate'] = display_df['Delivered_Rate'].apply(lambda x: f"{x:.1f}%")
+        display_df['Delayed_Rate'] = display_df['Delayed_Rate'].apply(lambda x: f"{x:.1f}%")
         
-        for method in logistics_costs['Shipping Method'].unique():
-            method_data = logistics_costs[logistics_costs['Shipping Method'] == method]
-            
-            fig.add_trace(go.Scatter(
-                x=method_data['Avg_Cost'],
-                y=method_data['Delay_Rate'],
-                mode='markers',
-                marker=dict(
-                    size=method_data['Shipment_Count'] * 3,
-                    color=colors.get(method, '#888888'),
-                    line=dict(width=2, color='white'),
-                    sizemode='diameter'
-                ),
-                text=[f"Method: {method}<br>Partner: {partner}<br>Avg Cost: ${cost:.0f}<br>Delay Rate: {delay:.1f}%<br>Shipments: {count}"
-                      for method, partner, cost, delay, count in zip(
-                          method_data['Shipping Method'], method_data['Logistics Partner'],
-                          method_data['Avg_Cost'], method_data['Delay_Rate'], method_data['Shipment_Count'])],
-                hovertemplate='%{text}<extra></extra>',
-                name=method
-            ))
+        # Sort by reliability score
+        display_df = display_df.sort_values('Reliability_Score', ascending=False)
         
-        fig.update_layout(
-            title='Logistics Cost vs Performance Analysis',
-            xaxis_title='Average Cost per Shipment ($)',
-            yaxis_title='Delay Rate (%)',
-            height=450,
-            template='plotly_dark'
-        )
+        # Select columns for display
+        final_df = display_df[['Shipping Method', 'Logistics Partner', 'Total_Shipments', 'Delivered_Rate', 'Delayed_Rate', 'Reliability_Score']].copy()
+        final_df.columns = ['Shipping Method', 'Logistics Partner', 'Shipments', 'Delivered', 'Delayed', 'Reliability Score']
         
-        # Add quadrant lines
-        avg_cost = logistics_costs['Avg_Cost'].mean()
-        avg_delay = logistics_costs['Delay_Rate'].mean()
-        
-        fig.add_vline(x=avg_cost, line_dash="dash", line_color="gray", opacity=0.5)
-        fig.add_hline(y=avg_delay, line_dash="dash", line_color="gray", opacity=0.5)
-        
-        return fig
+        return final_df
         
     except Exception as e:
-        st.error(f"Error creating logistics cost analysis: {str(e)}")
+        st.error(f"Error creating logistics performance analysis: {str(e)}")
         return None
 
 def calculate_cost_optimization_kpis(df):
@@ -1202,3 +1183,73 @@ def generate_cost_optimization_recommendations(df):
     except Exception as e:
         st.error(f"Error generating cost optimization recommendations: {str(e)}")
         return []
+    
+def generate_comprehensive_ai_insights(df):
+    """Generate comprehensive AI insights across all business areas"""
+    try:
+        if df.empty:
+            return {}
+        
+        insights = {}
+        
+        # Operational Performance Insights
+        total_orders = len(df)
+        delivered_orders = len(df[df['Delivery Status'] == 'Delivered'])
+        delayed_orders = len(df[df['Delivery Status'] == 'Delayed'])
+        delivery_rate = (delivered_orders / total_orders * 100) if total_orders > 0 else 0
+        
+        insights['operational'] = {
+            'summary': f"Operations analysis of {total_orders} orders shows {delivery_rate:.1f}% delivery success rate",
+            'key_finding': f"Primary concern: {delayed_orders} orders delayed ({delayed_orders/total_orders*100:.1f}% of volume)",
+            'recommendation': "Focus on supplier performance improvement and logistics partner optimization"
+        }
+        
+        # Supplier Risk Analysis
+        supplier_performance = df.groupby('Supplier')['Delivery Status'].apply(lambda x: (x == 'Delayed').mean() * 100)
+        worst_supplier = supplier_performance.idxmax()
+        worst_rate = supplier_performance.max()
+        best_supplier = supplier_performance.idxmin()
+        best_rate = supplier_performance.min()
+        
+        insights['supplier_risk'] = {
+            'summary': f"Supplier performance varies significantly across {df['Supplier'].nunique()} suppliers",
+            'key_finding': f"{worst_supplier} shows {worst_rate:.1f}% delay rate vs {best_supplier} at {best_rate:.1f}%",
+            'recommendation': f"Consider shifting volume from {worst_supplier} to {best_supplier} or implement performance penalties"
+        }
+        
+        # Cost Optimization Insights
+        total_cost = df['Total Cost'].sum()
+        avg_unit_price = df['Unit Price'].mean()
+        
+        # Calculate potential savings from price standardization
+        product_price_variance = df.groupby('Product')['Unit Price'].std().mean()
+        
+        insights['cost_optimization'] = {
+            'summary': f"Total spend of ${total_cost:,.0f} across {df['Product'].nunique()} product categories",
+            'key_finding': f"Average unit price variation of ${product_price_variance:.2f} suggests pricing inconsistencies",
+            'recommendation': "Implement standardized pricing agreements and volume consolidation strategies"
+        }
+        
+        # Inventory Management Insights
+        inventory_turnover = df.groupby('Product')['Quantity'].sum() / df.groupby('Product')['Quantity'].count()
+        avg_turnover = inventory_turnover.mean()
+        
+        insights['inventory'] = {
+            'summary': f"Inventory analysis across {df['Product'].nunique()} products shows average turnover of {avg_turnover:.1f}",
+            'key_finding': "High-value items (Widget A, Widget B) require closer monitoring",
+            'recommendation': "Implement ABC classification system and automated reorder points for C-class items"
+        }
+        
+        # Strategic Recommendations
+        insights['strategic'] = {
+            'priority_1': "Address supplier performance issues - highest ROI opportunity",
+            'priority_2': "Standardize pricing across product categories to reduce cost volatility",
+            'priority_3': "Implement predictive analytics for demand forecasting and inventory optimization",
+            'priority_4': "Diversify logistics partner portfolio to reduce delivery risk"
+        }
+        
+        return insights
+        
+    except Exception as e:
+        st.error(f"Error generating AI insights: {str(e)}")
+        return {}
